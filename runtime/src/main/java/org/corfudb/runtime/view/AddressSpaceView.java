@@ -5,8 +5,8 @@ import com.codahale.metrics.MetricRegistry;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
+import com.google.common.cache.RemovalCause;
+import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.UncheckedExecutionException;
@@ -57,6 +57,18 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class AddressSpaceView extends AbstractView {
 
+    public static long removalCauseCacheSize = 500_000;
+
+    /**
+     * This cache maintains debug information that is required to
+     * determine the cause of a NoRollbackException. Using ehcache's
+     * deepSizeOf it shows that the memory foot print of the
+     * removalCauseCache is around ~50mb.
+     */
+    public static Cache<Long, RemovalCause>  removalCauseCache = CacheBuilder.newBuilder()
+            .maximumSize(removalCauseCacheSize)
+            .build();
+
     /**
      * A cache for read results.
      */
@@ -87,6 +99,7 @@ public class AddressSpaceView extends AbstractView {
         if (log.isTraceEnabled()) {
             log.trace("handleEviction: evicting {} cause {}", notification.getKey(), notification.getCause());
         }
+        removalCauseCache.put(notification.getKey(), notification.getCause());
     }
 
     /**
