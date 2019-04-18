@@ -13,6 +13,7 @@ import ch.qos.logback.core.joran.spi.JoranException;
 import com.google.common.collect.ImmutableList;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -394,10 +395,10 @@ public class CorfuServer {
     public static void configureBootstrapOptions(@Nonnull ServerContext context,
             @Nonnull ServerBootstrap bootstrap) {
         bootstrap.option(ChannelOption.SO_BACKLOG, 100)
+                .childOption(ChannelOption.ALLOCATOR, UnpooledByteBufAllocator.DEFAULT)
             .childOption(ChannelOption.SO_KEEPALIVE, true)
             .childOption(ChannelOption.SO_REUSEADDR, true)
-            .childOption(ChannelOption.TCP_NODELAY, true)
-            .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
+            .childOption(ChannelOption.TCP_NODELAY, true);
     }
 
 

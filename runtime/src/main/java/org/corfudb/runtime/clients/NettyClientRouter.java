@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;
@@ -211,6 +212,7 @@ public class NettyClientRouter extends SimpleChannelInboundHandler<CorfuMsg>
         b.channel(parameters.getSocketType().getChannelClass());
         parameters.getNettyChannelOptions().forEach(b::option);
         b.handler(getChannelInitializer());
+        b.option(ChannelOption.ALLOCATOR, UnpooledByteBufAllocator.DEFAULT);
         b.option(ChannelOption.CONNECT_TIMEOUT_MILLIS,
                 (int) parameters.getConnectionTimeout().toMillis());
 
