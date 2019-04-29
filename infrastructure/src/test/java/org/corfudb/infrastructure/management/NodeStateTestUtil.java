@@ -22,7 +22,7 @@ public class NodeStateTestUtil {
         //prevent creating class instances
     }
 
-    public static NodeState nodeState(String endpoint, ConnectionStatus... connectionStates) {
+    public static NodeState nodeState(String endpoint, long epoch, ConnectionStatus... connectionStates) {
         Map<String, ConnectionStatus> connectivity = new HashMap<>();
         for (int i = 0; i < connectionStates.length; i++) {
             connectivity.put(NODE_NAMES.get(i), connectionStates[i]);
@@ -32,6 +32,7 @@ public class NodeStateTestUtil {
                 .endpoint(endpoint)
                 .type(NodeConnectivityType.CONNECTED)
                 .connectivity(ImmutableMap.copyOf(connectivity))
+                .epoch(epoch)
                 .build();
 
         return NodeState.builder()
