@@ -7,6 +7,7 @@
     <version>0.2.3-SNAPSHOT</version>
 
     <modules>
+        <module>client-api</module>
         <module>infrastructure</module>
         <module>runtime</module>
         <module>format</module>
@@ -93,23 +94,19 @@
 
     <dependencies>
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-all</artifactId>
             <version>1.10.19</version>
             <scope>test</scope>
         </dependency>
+
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>3.8.0</version>
             <scope>test</scope>
         </dependency>
+
         <dependency>
             <groupId>com.github.marschall</groupId>
             <artifactId>junit-lambda</artifactId>
@@ -336,7 +333,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.0.0-M1</version>
                 <configuration>
-                    <argLine>${argLine}</argLine>
                     <forkCount>1C</forkCount>
                     <reuseForks>true</reuseForks>
                     <trimStackTrace>false</trimStackTrace>
