@@ -7,10 +7,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.NonNull;
-import lombok.ToString;
+import lombok.*;
 import org.corfudb.runtime.CorfuRuntime;
 import org.corfudb.util.serializer.ISerializer;
 import org.corfudb.util.serializer.Serializers;
@@ -142,5 +139,32 @@ public class SMREntry extends LogEntry implements ISMRConsumable {
         // TODO: we should check that the id matches the id of this entry,
         // but replex erases this information.
         return Collections.singletonList(this);
+    }
+
+    @ToString
+    @EqualsAndHashCode
+    static public class LocalSMREntryLocator extends AbstractLocalSMREntryLocator {
+        public LocalSMREntryLocator() {
+            setType(LocalLocatorType.SMREntryLocator);
+        }
+
+        @Override
+        public void serialize(ByteBuf buf) {
+            super.serialize(buf);
+        }
+
+        @Override
+        protected void deserializeBuffer(ByteBuf buf) {
+            // no-op
+        }
+
+        @Override
+        public int compareTo(@NonNull ILocalSMREntryLocator other) {
+            if (other instanceof LocalSMREntryLocator) {
+                return 0;
+            } else {
+                throw new RuntimeException("Can't compare Local SMREntryLocators of different types");
+            }
+        }
     }
 }

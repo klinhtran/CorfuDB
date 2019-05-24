@@ -8,8 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import lombok.Getter;
-import lombok.ToString;
+import lombok.*;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.protocols.wireprotocol.ILogData;
 import org.corfudb.runtime.CorfuRuntime;
@@ -127,5 +126,52 @@ public class MultiObjectSMREntry extends LogEntry implements ISMRConsumable {
         this.getEntryMap().values().forEach(x -> {
             x.setEntry(entry);
         });
+    }
+
+    @Data
+    @ToString
+    @EqualsAndHashCode
+    public static class LocalMultiObjectSMREntryLocator extends AbstractLocalSMREntryLocator {
+        private UUID streamId;
+        private int index;
+
+        public LocalMultiObjectSMREntryLocator() {
+            setType(LocalLocatorType.MultiObjectSMREntryLocator);
+        }
+
+        public LocalMultiObjectSMREntryLocator(@NonNull UUID streamId, int index) {
+            this();
+            this.streamId = streamId;
+            this.index = index;
+        }
+
+        @Override
+        public void serialize(ByteBuf buf) {
+            super.serialize(buf);
+            buf.writeLong(streamId.getMostSignificantBits());
+            buf.writeLong(streamId.getLeastSignificantBits());
+            buf.writeInt(index);
+        }
+
+        @Override
+        protected void deserializeBuffer(ByteBuf buf) {
+            long mostSignificantBits = buf.readLong();
+            long leastSignificantBits = buf.readLong();
+            this.streamId = new UUID(mostSignificantBits, leastSignificantBits);
+            this.index = buf.readInt();
+        }
+
+        @Override
+        public int compareTo(@NonNull ILocalSMREntryLocator other) {
+            if (other instanceof LocalMultiObjectSMREntryLocator) {
+                if (!streamId.equals(((LocalMultiObjectSMREntryLocator) other).getStreamId())) {
+                    throw new RuntimeException("Can't compare LocalMultiObjectSMREntryLocator of different streams");
+                }
+
+                return Integer.compare(index, ((LocalMultiObjectSMREntryLocator) other).getIndex());
+            } else {
+                throw new RuntimeException("Can't compare Local SMREntryLocators of different types");
+            }
+        }
     }
 }

@@ -7,8 +7,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-import lombok.Getter;
-import lombok.ToString;
+import lombok.*;
 import lombok.extern.slf4j.Slf4j;
 
 import org.corfudb.protocols.wireprotocol.ILogData;
@@ -82,5 +81,41 @@ public class MultiSMREntry extends LogEntry implements ISMRConsumable {
     @Override
     public List<SMREntry> getSMRUpdates(UUID id) {
         return updates;
+    }
+
+    @Data
+    @ToString
+    @EqualsAndHashCode
+    public static class LocalMultiSMREntryLocator extends AbstractLocalSMREntryLocator {
+        private int index;
+
+        public LocalMultiSMREntryLocator() {
+            setType(LocalLocatorType.MultiSMREntryLocator);
+        }
+
+        public LocalMultiSMREntryLocator(int index) {
+            this();
+            this.index = index;
+        }
+
+        @Override
+        public void serialize(ByteBuf buf) {
+            super.serialize(buf);
+            buf.writeInt(index);
+        }
+
+        @Override
+        protected void deserializeBuffer(ByteBuf buf) {
+            this.index = buf.readInt();
+        }
+
+        @Override
+        public int compareTo(@NonNull ILocalSMREntryLocator other) {
+            if (other instanceof LocalMultiSMREntryLocator) {
+                return Integer.compare(index, ((LocalMultiSMREntryLocator) other).index);
+            } else {
+                throw new RuntimeException("Can't compare Local SMREntryLocators of different types");
+            }
+        }
     }
 }
