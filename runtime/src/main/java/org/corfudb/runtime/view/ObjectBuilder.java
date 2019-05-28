@@ -47,6 +47,9 @@ public class ObjectBuilder<T> implements IObjectBuilder<T> {
     ISerializer serializer = Serializers.JSON;
 
     @Setter
+    boolean needOrderedUUIDs;
+
+    @Setter
     Set<ObjectOpenOptions> options = EnumSet.noneOf(ObjectOpenOptions.class);
 
     @Setter(AccessLevel.NONE)
@@ -90,6 +93,11 @@ public class ObjectBuilder<T> implements IObjectBuilder<T> {
 
         if (streamName != null) {
             streamID = CorfuRuntime.getStreamID(streamName);
+        }
+
+        // Some Corfu Collections like CorfuQueue need globally ordered UUIDs
+        if (needOrderedUUIDs) {
+            setArguments(runtime.getGuidGenerator());
         }
 
         try {
