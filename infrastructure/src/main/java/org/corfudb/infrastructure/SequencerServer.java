@@ -96,6 +96,12 @@ public class SequencerServer extends AbstractServer {
     @Getter
     private long globalLogTail = Address.getMinAddress();
 
+    /**
+     * - {@link SequencerServer::globalSequence}: A simple counter that goes up on every request.
+     */
+    @Getter
+    private Long globalSequence = Address.getMinSequence();
+
     private long trimMark = Address.NON_ADDRESS;
 
     /**
@@ -435,8 +441,13 @@ public class SequencerServer extends AbstractServer {
         sequencerEpoch = bootstrapMsgEpoch;
         serverContext.setSequencerEpoch(bootstrapMsgEpoch);
 
-        log.info("Sequencer reset with token = {}, size {} streamTailToGlobalTailMap = {}, sequencerEpoch = {}",
-                globalLogTail, streamTailToGlobalTailMap.size(), streamTailToGlobalTailMap, sequencerEpoch);
+        // Reset the global sequence counter since the epoch has been updated.
+        globalSequence = Address.getMinSequence();
+
+        log.info("Sequencer reset with token = {}, size {} streamTailToGlobalTailMap = {}, sequencerEpoch = {},"+
+                " globalSequence = {}",
+                globalLogTail, streamTailToGlobalTailMap.size(), streamTailToGlobalTailMap, sequencerEpoch,
+                globalSequence);
         r.sendResponse(ctx, msg, CorfuMsgType.ACK.msg());
     }
 
@@ -475,6 +486,10 @@ public class SequencerServer extends AbstractServer {
 
                 case TokenRequest.TK_TX:
                     handleTxToken(msg, ctx, r);
+                    return;
+
+                case TokenRequest.TK_OGUID:
+                    handleOrderedGuidToken(msg, ctx, r);
                     return;
 
                 default:
@@ -550,6 +565,30 @@ public class SequencerServer extends AbstractServer {
         // handleAllocation() does the actual allocation of log position(s)
         // and returns the response
         handleAllocation(msg, ctx, r);
+    }
+
+    /**
+     * this method serves a monotonically increasing counter as an Ordered GUID.
+     * It simply returns a counter along with the current epoch value.
+     * If the sequencer restarts the epoch ticks up while the counter resets, thereby
+     * allowing a globally unique monotonically increasing sequence to be served.
+     *
+     * Not Thread Safe: Only OK when SequencerServer is single threaded.
+     *
+     * @param msg corfu message containing guid request
+     * @param ctx netty ChannelHandlerContext
+     * @param r   server router
+     */
+    private void handleOrderedGuidToken(CorfuPayloadMsg<TokenRequest> msg,
+                                        ChannelHandlerContext ctx, IServerRouter r) {
+        final TokenRequest req = msg.getPayload();
+
+        // GlobalSequence points to the next available value, so return it first...
+        Token token = new Token(sequencerEpoch, globalSequence);
+        // ... then increment it by the number of such tokens requested.
+        globalSequence += req.getNumTokens();
+        r.sendResponse(ctx, msg, CorfuMsgType.TOKEN_RES.payloadMsg(
+                new TokenResponse(token, Collections.emptyMap())));
     }
 
     /**

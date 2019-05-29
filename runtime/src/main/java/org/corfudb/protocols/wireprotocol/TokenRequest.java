@@ -20,7 +20,9 @@ import lombok.Data;
  *          by the requested # of tokens.
  * 3. {@link TokenRequest::TK_TX} :
  *          First, check transaction resolution. If transaction can commit, then behave
- *          like {@link TokenRequest::TK_MULTI_STREAM}.</p>
+ *          like {@link TokenRequest::TK_MULTI_STREAM}.
+ * 4. {@link TokenRequest::TK_OGUID} :
+ *          Ask for a simple atomic counter to act as an ordered globally unique id (OGUID).</p>
  */
 @Data
 @AllArgsConstructor
@@ -31,6 +33,7 @@ public class TokenRequest implements ICorfuPayload<TokenRequest> {
     // todo: remove ..public static final byte TK_STREAM = 2;
     public static final byte TK_MULTI_STREAM = 3;
     public static final byte TK_TX = 4;
+    public static final byte TK_OGUID = 5;
 
     /** The type of request, one of the above. */
     final byte reqType;
@@ -79,6 +82,18 @@ public class TokenRequest implements ICorfuPayload<TokenRequest> {
     }
 
     /**
+     * Constructor for generating an Ordered Globally Unique Id TokenRequest.
+     * {@link TokenRequest::TK_OGUID}
+     *
+     */
+    public TokenRequest(Long numTokens) {
+        this.reqType = TK_OGUID;
+        this.numTokens = numTokens;
+        // Set to null so that this element does not appear in the serialized buffer.
+        this.streams = null;
+        txnResolution = null;
+    }
+    /**
      * Deserialization Constructor from Bytebuf to TokenRequest.
      *
      * @param buf The buffer to deserialize
@@ -95,6 +110,7 @@ public class TokenRequest implements ICorfuPayload<TokenRequest> {
                 break;
 
             case TK_RAW:
+            case TK_OGUID:
                 numTokens = ICorfuPayload.fromBuffer(buf, Long.class);
                 streams = null;
                 txnResolution = null;
@@ -123,16 +139,27 @@ public class TokenRequest implements ICorfuPayload<TokenRequest> {
     @Override
     public void doSerialize(ByteBuf buf) {
         ICorfuPayload.serialize(buf, reqType);
-        if (reqType != TK_QUERY) {
-            ICorfuPayload.serialize(buf, numTokens);
-        }
+        switch (reqType) {
+            case TK_QUERY:
+                ICorfuPayload.serialize(buf, streams);
+                break;
 
-        if (reqType != TK_RAW) {
-            ICorfuPayload.serialize(buf, streams);
-        }
+            case TK_RAW:
+            case TK_OGUID:
+                ICorfuPayload.serialize(buf, numTokens);
+                break;
 
-        if (reqType == TK_TX) {
-            ICorfuPayload.serialize(buf, txnResolution);
+            case TK_MULTI_STREAM:
+                ICorfuPayload.serialize(buf, numTokens);
+                ICorfuPayload.serialize(buf, streams);
+                break;
+
+            case TK_TX:
+                ICorfuPayload.serialize(buf, numTokens);
+                ICorfuPayload.serialize(buf, streams);
+                ICorfuPayload.serialize(buf, txnResolution);
+                break;
         }
     }
 }
+

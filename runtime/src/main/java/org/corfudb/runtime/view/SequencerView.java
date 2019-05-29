@@ -93,6 +93,18 @@ public class SequencerView extends AbstractView {
     }
 
     /**
+     * Return the next ordered globally unique sequence number from the sequencer.
+     *
+     * @return A token that can serve as the globally ordered unique sequence number.
+     */
+    public TokenResponse nextOrderedGuid() {
+        try (Timer.Context context = MetricsUtils.getConditionalContext(sequencerNextOneStream)){
+            return layoutHelper(e -> CFUtils.getUninterruptibly(e.getPrimarySequencerClient().
+                    nextOrderedGuid(1)));
+        }
+    }
+
+    /**
      * Retrieve a stream's address space from sequencer server.
      *
      * @param streamsAddressesRange range of streams address space to request.

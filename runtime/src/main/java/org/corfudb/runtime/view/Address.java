@@ -38,6 +38,13 @@ public class Address {
     @Getter
     private static long minAddress = 0L;
 
+    /**
+     * Return the first address higher than the minAddress so sequence is never 0.
+     * Ensuring a non-zero sequence helps in many cases like simple sanity validations.
+     * @return The sequence to begin the global unique id
+     */
+    public static long getMinSequence() { return minAddress + 1; }
+
     public static boolean isMinAddress(long addr) {
         return addr == minAddress;
     }

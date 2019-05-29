@@ -73,6 +73,17 @@ public class SequencerClient extends AbstractClient {
                 new TokenRequest(numTokens, streamIDs, conflictInfo)));
     }
 
+    /**
+     * Fetches the next counter value from the sequencer as an ordered globally unique id.
+     *
+     * @param numTokens Number of tokens to be reserved.
+     * @return A completable future with the token response from the sequencer.
+     */
+    public CompletableFuture<TokenResponse> nextOrderedGuid(long numTokens) {
+        return sendMessageWithFuture(CorfuMsgType.TOKEN_REQ.payloadMsg(
+                new TokenRequest(numTokens)));
+    }
+
     public CompletableFuture<Void> trimCache(Long address) {
         return sendMessageWithFuture(CorfuMsgType.SEQUENCER_TRIM_REQ.payloadMsg(address));
     }
