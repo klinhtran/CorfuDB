@@ -64,7 +64,9 @@ public class RestoreRedundancyMergeSegments extends Action {
             // Currently the state is transferred for the complete segment.
             // TODO: Add stripe specific transfer granularity for optimization.
             // Transfer the replicated segment to the difference set calculated above.
-            StateTransfer.transfer(layout, lowRedundancyServers, runtime, layout.getFirstSegment());
+            for (String lowRedundancyServer : lowRedundancyServers) {
+                StateTransfer.transfer(layout, lowRedundancyServer, runtime, layout.getFirstSegment());
+            }
 
             // Merge the 2 segments.
             runtime.getLayoutManagementView().mergeSegments(new Layout(layout));

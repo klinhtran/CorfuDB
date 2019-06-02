@@ -1,11 +1,13 @@
 package org.corfudb.infrastructure.log;
 
+import com.google.common.collect.Range;
+
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.corfudb.protocols.wireprotocol.LogData;
-import org.corfudb.protocols.wireprotocol.StreamAddressRange;
 import org.corfudb.protocols.wireprotocol.StreamsAddressResponse;
 import org.corfudb.protocols.wireprotocol.TailsResponse;
 import org.corfudb.runtime.exceptions.OverwriteCause;
@@ -76,6 +78,15 @@ public interface StreamLog {
      * Get the first untrimmed address in the address space.
      */
     long getTrimMark();
+
+    /**
+     * Returns the missing addresses in this Log Unit in the specified consecutive
+     * range of addresses. The range cannot be larger than RECORDS_PER_LOG_FILE.
+     *
+     * @param range Range of addresses to compare.
+     * @return Set of missing addresses.
+     */
+    Set<Long> getMissingAddresses(Range<Long> range);
 
     /**
      * Sync the stream log file to secondary storage.

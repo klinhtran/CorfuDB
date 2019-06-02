@@ -2,8 +2,8 @@ package org.corfudb.infrastructure.log;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.corfudb.infrastructure.ServerContext.RECORDS_PER_LOG_FILE;
 import static org.corfudb.infrastructure.log.StreamLogFiles.METADATA_SIZE;
-import static org.corfudb.infrastructure.log.StreamLogFiles.RECORDS_PER_LOG_FILE;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -30,7 +30,6 @@ import org.corfudb.protocols.wireprotocol.ILogData;
 import org.corfudb.protocols.wireprotocol.LogData;
 import org.corfudb.runtime.exceptions.DataCorruptionException;
 import org.corfudb.runtime.exceptions.OverwriteException;
-import org.corfudb.runtime.exceptions.WorkflowException;
 import org.corfudb.runtime.view.Address;
 import org.corfudb.util.serializer.Serializers;
 import org.junit.Test;
@@ -82,7 +81,7 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
 
         // A range write that spans two segments
         final int numSegments = 2;
-        final int numIter = StreamLogFiles.RECORDS_PER_LOG_FILE * numSegments;
+        final int numIter = RECORDS_PER_LOG_FILE * numSegments;
         List<LogData> writeEntries = new ArrayList<>();
         for (int x = 0; x < numIter; x++) {
             writeEntries.add(getEntry(x));
@@ -159,7 +158,7 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
         List<LogData> nonSequentialRange = new ArrayList<>();
         final int numSegments = 3;
         final int skipGap = 10;
-        final int numEntries = numSegments * StreamLogFiles.RECORDS_PER_LOG_FILE;
+        final int numEntries = numSegments * RECORDS_PER_LOG_FILE;
         // Generate two invalid ranges, a large range and a non-sequential range
         for (long address = 0; address < numEntries; address++) {
             largeRange.add(getEntry(address));
@@ -314,7 +313,7 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
         Serializers.CORFU.serialize(streamEntry, b);
         // Write to two segments
         long address0 = 0;
-        long address1 = StreamLogFiles.RECORDS_PER_LOG_FILE + 1L;
+        long address1 = RECORDS_PER_LOG_FILE + 1L;
         log.append(address0, new LogData(DataType.DATA, b));
         log.append(address1, new LogData(DataType.DATA, b));
 
@@ -383,9 +382,9 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
         ByteBuf b = Unpooled.buffer();
         byte[] streamEntry = "Payload".getBytes();
         Serializers.CORFU.serialize(streamEntry, b);
-        long seg1 = StreamLogFiles.RECORDS_PER_LOG_FILE * 0 + 1;
-        long seg2 = StreamLogFiles.RECORDS_PER_LOG_FILE * 1 + 1;
-        long seg3 = StreamLogFiles.RECORDS_PER_LOG_FILE * 2 + 1;
+        long seg1 = RECORDS_PER_LOG_FILE * 0 + 1;
+        long seg2 = RECORDS_PER_LOG_FILE * 1 + 1;
+        long seg3 = RECORDS_PER_LOG_FILE * 2 + 1;
 
         log.append(seg1, new LogData(DataType.DATA, b));
         log.append(seg2, new LogData(DataType.DATA, b));
@@ -425,7 +424,7 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
 
         // Write to multiple segments
         final int segments = 3;
-        long lastAddress = segments * StreamLogFiles.RECORDS_PER_LOG_FILE;
+        long lastAddress = segments * RECORDS_PER_LOG_FILE;
         for (long x = 0; x <= lastAddress; x++){
             writeToLog(log, x);
             assertThat(log.getLogTail()).isEqualTo(x);
@@ -455,7 +454,7 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
         // Write 50 segments and trim the first 25
         final long numSegments = 50;
         final long filesPerSegment = 1;
-        for(long x = 0; x < numSegments * StreamLogFiles.RECORDS_PER_LOG_FILE; x++) {
+        for(long x = 0; x < numSegments * RECORDS_PER_LOG_FILE; x++) {
             writeToLog(log, x);
         }
 
@@ -464,7 +463,7 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
         assertThat((long) logs.list().length).isEqualTo(numSegments * filesPerSegment);
 
         final long endSegment = 25;
-        long trimAddress = endSegment * StreamLogFiles.RECORDS_PER_LOG_FILE + 1;
+        long trimAddress = endSegment * RECORDS_PER_LOG_FILE + 1;
 
         // Get references to the segments that will be trimmed
         Set<SegmentHandle> trimmedHandles = new HashSet();
@@ -497,7 +496,7 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
         long trimmedExceptions = 0;
 
         // Try to read trimmed addresses
-        for(long x = 0; x < numSegments * StreamLogFiles.RECORDS_PER_LOG_FILE; x++) {
+        for(long x = 0; x < numSegments * RECORDS_PER_LOG_FILE; x++) {
             ILogData logData = log.read(x);
             if(logData.isTrimmed()) {
                 trimmedExceptions++;
@@ -516,7 +515,7 @@ public class StreamLogFilesTest extends AbstractCorfuTest {
     @Test
     public void testPrefixTrimAndStartUp() {
         StreamLog log = new StreamLogFiles(getContext(), false);
-        log.prefixTrim(StreamLogFiles.RECORDS_PER_LOG_FILE / 2);
+        log.prefixTrim(RECORDS_PER_LOG_FILE / 2);
         log.compact();
         log = new StreamLogFiles(getContext(), false);
         final long midSegmentAddress = RECORDS_PER_LOG_FILE + 5;

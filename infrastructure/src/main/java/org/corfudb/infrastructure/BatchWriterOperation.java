@@ -23,7 +23,8 @@ public class BatchWriterOperation<T> {
         SEAL,
         RESET,
         TAILS_QUERY,
-        LOG_ADDRESS_SPACE_QUERY
+        LOG_ADDRESS_SPACE_QUERY,
+        MISSING_ADDRESSES_IN_RANGE
     }
 
     private final Type type;

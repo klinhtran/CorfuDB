@@ -1,11 +1,16 @@
 package org.corfudb.infrastructure.log;
 
+import com.google.common.collect.Range;
+import com.google.common.collect.Sets;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -119,6 +124,20 @@ public class InMemoryStreamLog implements StreamLog, StreamLogWithRankedAddressS
             // the method below might throw DataOutrankedException or ValueAdoptedException
             assertAppendPermittedUnsafe(address, entry);
         }
+    }
+
+    /**
+     * Returns the missing addresses in this Log Unit in the specified consecutive
+     * range of addresses.
+     *
+     * @param range Range of addresses to compare.
+     * @return Set of missing addresses.
+     */
+    @Override
+    public Set<Long> getMissingAddresses(Range<Long> range) {
+        return Sets.difference(LongStream.rangeClosed(range.lowerEndpoint(), range.upperEndpoint())
+                        .boxed().collect(Collectors.toSet()),
+                logCache.keySet());
     }
 
     @Override

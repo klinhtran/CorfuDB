@@ -89,6 +89,8 @@ public class ServerContext implements AutoCloseable {
     /** The node Id, stored as a base64 string. */
     private static final String NODE_ID = "NODE_ID";
 
+    public static final int RECORDS_PER_LOG_FILE = 10_000;
+
     /**
      * various duration constants.
      */

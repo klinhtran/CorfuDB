@@ -4,14 +4,28 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.google.common.annotations.VisibleForTesting;
+
 import io.netty.channel.ChannelHandlerContext;
+
+import java.lang.invoke.MethodHandles;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+
 import org.corfudb.infrastructure.log.InMemoryStreamLog;
 import org.corfudb.infrastructure.log.StreamLog;
 import org.corfudb.infrastructure.log.StreamLogCompaction;
 import org.corfudb.infrastructure.log.StreamLogFiles;
+import org.corfudb.protocols.wireprotocol.MissingAddressRequest;
+import org.corfudb.protocols.wireprotocol.MissingAddressResponse;
 import org.corfudb.protocols.wireprotocol.CorfuMsg;
 import org.corfudb.protocols.wireprotocol.CorfuMsgType;
 import org.corfudb.protocols.wireprotocol.CorfuPayloadMsg;
@@ -37,16 +51,14 @@ import org.corfudb.runtime.exceptions.ValueAdoptedException;
 import org.corfudb.runtime.exceptions.WrongEpochException;
 import org.corfudb.util.Utils;
 
-import java.lang.invoke.MethodHandles;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
-import static org.corfudb.infrastructure.BatchWriterOperation.Type.*;
+import static org.corfudb.infrastructure.BatchWriterOperation.Type.LOG_ADDRESS_SPACE_QUERY;
+import static org.corfudb.infrastructure.BatchWriterOperation.Type.MISSING_ADDRESSES_IN_RANGE;
+import static org.corfudb.infrastructure.BatchWriterOperation.Type.PREFIX_TRIM;
+import static org.corfudb.infrastructure.BatchWriterOperation.Type.RANGE_WRITE;
+import static org.corfudb.infrastructure.BatchWriterOperation.Type.RESET;
+import static org.corfudb.infrastructure.BatchWriterOperation.Type.SEAL;
+import static org.corfudb.infrastructure.BatchWriterOperation.Type.TAILS_QUERY;
+import static org.corfudb.infrastructure.BatchWriterOperation.Type.WRITE;
 
 
 /**
@@ -319,6 +331,22 @@ public class LogUnitServer extends AbstractServer {
         } catch (DataCorruptionException e) {
             r.sendResponse(ctx, msg, CorfuMsgType.ERROR_DATA_CORRUPTION.msg());
         }
+    }
+
+    /**
+     * Handles requests for missing entries in specified range.
+     * This is used by state transfer to catchup only the remainder of the segment.
+     */
+    @ServerHandler(type = CorfuMsgType.MISSING_ADDRESS_REQUEST)
+    private void getMissingAddressesInRange(CorfuPayloadMsg<MissingAddressRequest> msg, ChannelHandlerContext ctx,
+                                            IServerRouter r) {
+        batchWriter.<MissingAddressResponse>addTask(MISSING_ADDRESSES_IN_RANGE, msg)
+                .thenAccept(missingAddresses -> r.sendResponse(ctx, msg,
+                        CorfuMsgType.MISSING_ADDRESS_RESPONSE.payloadMsg(missingAddresses)))
+                .exceptionally(ex -> {
+                    handleException(ex, ctx, msg, r);
+                    return null;
+                });
     }
 
     @ServerHandler(type = CorfuMsgType.COMPACT_REQUEST)

@@ -5,6 +5,7 @@ import com.google.common.collect.ContiguousSet;
 import com.google.common.collect.DiscreteDomain;
 import com.google.common.collect.Range;
 import com.google.common.reflect.TypeToken;
+
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.corfudb.infrastructure.SequencerServer;
@@ -13,7 +14,7 @@ import org.corfudb.infrastructure.ServerContextBuilder;
 import org.corfudb.infrastructure.TestLayoutBuilder;
 import org.corfudb.infrastructure.TestServerRouter;
 import org.corfudb.infrastructure.management.FailureDetector;
-import org.corfudb.protocols.wireprotocol.ClusterState;
+import org.corfudb.infrastructure.orchestrator.actions.RestoreRedundancyMergeSegments;
 import org.corfudb.protocols.wireprotocol.CorfuMsgType;
 import org.corfudb.protocols.wireprotocol.CorfuPayloadMsg;
 import org.corfudb.protocols.wireprotocol.LayoutCommittedRequest;
@@ -56,6 +57,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -1497,6 +1499,113 @@ public class ManagementViewTest extends AbstractViewTest {
 
         // Verify that segments merged without state transfer
         waitForLayoutChange(l -> l.getSegments().size() == 1, rt);
+    }
+
+    /**
+     * This test verifies that partial state transfers when retried only transfer the delta
+     * of the address space.
+     * Setup: Layout - Write 11_000 entries to SERVER 0 and 1_000 entries to SERVERS 0 & 1.
+     * We then trigger the state transfer and force the transfer to fail on the last range write.
+     * Another transfer is then triggered and verified that only the remaining data is transferred.
+     */
+    @Test
+    public void verifyPartialStateTransferCompletionOnRetry() throws Exception {
+        corfuRuntime = null;
+        try {
+
+            ServerContext sc1 = new ServerContextBuilder()
+                    .setSingle(false)
+                    .setServerRouter(new TestServerRouter(SERVERS.PORT_0))
+                    .setPort(SERVERS.PORT_0).build();
+            addServer(SERVERS.PORT_0, sc1);
+
+            ServerContext sc2 = new ServerContextBuilder()
+                    .setMemory(false)
+                    .setSingle(false)
+                    .setLogPath(PARAMETERS.TEST_TEMP_DIR)
+                    .setServerRouter(new TestServerRouter(SERVERS.PORT_1))
+                    .setPort(SERVERS.PORT_1).build();
+            addServer(SERVERS.PORT_1, sc2);
+
+            getManagementServer(SERVERS.PORT_0).shutdown();
+            getManagementServer(SERVERS.PORT_1).shutdown();
+
+            final long writtenAddressesBatch1 = 11_000L;
+            final long writtenAddressesBatch2 = 1_000L;
+
+            Layout layout = new TestLayoutBuilder()
+                    .setEpoch(1L)
+                    .addLayoutServer(SERVERS.PORT_0)
+                    .addLayoutServer(SERVERS.PORT_1)
+                    .addSequencer(SERVERS.PORT_0)
+                    .addSequencer(SERVERS.PORT_1)
+                    .buildSegment()
+                    .setStart(0L)
+                    .setEnd(writtenAddressesBatch1)
+                    .buildStripe()
+                    .addLogUnit(SERVERS.PORT_0)
+                    .addToSegment()
+                    .addToLayout()
+                    .buildSegment()
+                    .setStart(writtenAddressesBatch1)
+                    .setEnd(-1)
+                    .buildStripe()
+                    .addLogUnit(SERVERS.PORT_0)
+                    .addLogUnit(SERVERS.PORT_1)
+                    .addToSegment()
+                    .addToLayout()
+                    .build();
+            bootstrapAllServers(layout);
+
+            corfuRuntime = getNewRuntime(getDefaultNode()).connect();
+
+            setAggressiveTimeouts(layout, corfuRuntime);
+
+            IStreamView testStream = corfuRuntime.getStreamsView().get(CorfuRuntime.getStreamID("test"));
+            // Writes to address spaces 0 to 11_000 (inclusive) go to SERVER 0 only.
+            // Writes to address spaces 11_000 to 12_000 (inclusive) go to SERVERS 0 & 1.
+            for (int i = 0; i < (writtenAddressesBatch1 + writtenAddressesBatch2); i++) {
+                testStream.append("testPayload".getBytes());
+            }
+
+            final int rangeWriteCount = (int) writtenAddressesBatch1 / runtime.getParameters().getBulkReadSize();
+            AtomicInteger allowedWrites = new AtomicInteger(rangeWriteCount - 1);
+
+            // Rule added to fail the state transfer on the last range write.
+            addClientRule(corfuRuntime, SERVERS.ENDPOINT_1, new TestRule().matches(
+                    corfuMsg -> corfuMsg.getMsgType().equals(CorfuMsgType.RANGE_WRITE)
+                            && allowedWrites.decrementAndGet() < 0)
+                    .drop());
+
+            final RestoreRedundancyMergeSegments action1 = new RestoreRedundancyMergeSegments();
+            // Assert that the state transfer fails with a timeout exception.
+            assertThatThrownBy(() -> action1.impl(corfuRuntime))
+                    .isInstanceOf(ExecutionException.class)
+                    .hasRootCauseInstanceOf(TimeoutException.class);
+
+            AtomicInteger rangeWrites = new AtomicInteger();
+            clearClientRules(corfuRuntime);
+
+            // Rule added to count the number of range writes transferred.
+            addClientRule(corfuRuntime, SERVERS.ENDPOINT_1, new TestRule().matches(
+                    corfuMsg -> {
+                        if (corfuMsg.getMsgType().equals(CorfuMsgType.RANGE_WRITE)) {
+                            rangeWrites.incrementAndGet();
+                        }
+                        return true;
+                    }));
+
+            final RestoreRedundancyMergeSegments action2 = new RestoreRedundancyMergeSegments();
+            action2.impl(corfuRuntime);
+
+            final int expectedRemainingRangeWrites = 1;
+            assertThat(rangeWrites.get()).isEqualTo(expectedRemainingRangeWrites);
+
+        } finally {
+            if (corfuRuntime != null) {
+                corfuRuntime.shutdown();
+            }
+        }
     }
 
     /**

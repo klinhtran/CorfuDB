@@ -142,7 +142,8 @@ public class AddNodeWorkflow implements IWorkflow {
                 // The new server is already a part of the last segment. This is based on an
                 // assumption that the newly added node is not removed from the layout.
                 for (int i = 0; i < newLayout.getSegments().size() - 1; i++) {
-                    transfer(newLayout, Collections.singleton(request.getEndpoint()),
+                    transfer(newLayout,
+                            request.getEndpoint(),
                             runtime,
                             newLayout.getSegments().get(i));
                 }

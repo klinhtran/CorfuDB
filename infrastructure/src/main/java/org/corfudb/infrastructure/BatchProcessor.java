@@ -1,6 +1,7 @@
 package org.corfudb.infrastructure;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Range;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import java.util.LinkedList;
@@ -20,6 +21,8 @@ import org.corfudb.infrastructure.BatchWriterOperation.Type;
 import org.corfudb.infrastructure.log.StreamLog;
 import org.corfudb.protocols.wireprotocol.CorfuPayloadMsg;
 import org.corfudb.protocols.wireprotocol.LogData;
+import org.corfudb.protocols.wireprotocol.MissingAddressRequest;
+import org.corfudb.protocols.wireprotocol.MissingAddressResponse;
 import org.corfudb.protocols.wireprotocol.RangeWriteMsg;
 import org.corfudb.protocols.wireprotocol.TailsRequest;
 import org.corfudb.protocols.wireprotocol.TailsResponse;
@@ -183,6 +186,15 @@ public class BatchProcessor implements AutoCloseable {
                             case LOG_ADDRESS_SPACE_QUERY:
                                 // Retrieve the address space for every stream in the log.
                                 currOp.setResultValue(streamLog.getStreamsAddressSpace());
+                                break;
+                            case MISSING_ADDRESSES_IN_RANGE:
+                                MissingAddressRequest msg
+                                        = (MissingAddressRequest) currOp.getMsg().getPayload();
+                                Range<Long> range = Range.closed(
+                                        msg.getStartRange(),
+                                        msg.getEndRange());
+                                currOp.setResultValue(new MissingAddressResponse(
+                                        streamLog.getMissingAddresses(range)));
                                 break;
                             default:
                                 log.warn("Unknown BatchWriterOperation {}", currOp);

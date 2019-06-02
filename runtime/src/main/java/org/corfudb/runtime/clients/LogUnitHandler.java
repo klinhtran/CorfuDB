@@ -10,6 +10,7 @@ import lombok.Setter;
 import org.corfudb.protocols.wireprotocol.CorfuMsg;
 import org.corfudb.protocols.wireprotocol.CorfuMsgType;
 import org.corfudb.protocols.wireprotocol.CorfuPayloadMsg;
+import org.corfudb.protocols.wireprotocol.MissingAddressResponse;
 import org.corfudb.protocols.wireprotocol.ReadResponse;
 import org.corfudb.protocols.wireprotocol.TailsResponse;
 import org.corfudb.runtime.exceptions.DataCorruptionException;
@@ -211,6 +212,20 @@ public class LogUnitHandler implements IClient, IHandler<LogUnitClient> {
     @ClientHandler(type=CorfuMsgType.TRIM_MARK_RESPONSE)
     private static Object handleTrimMarkResponse(CorfuPayloadMsg<Long> msg,
                                              ChannelHandlerContext ctx, IClientRouter r) {
+        return msg.getPayload();
+    }
+
+    /**
+     * Handle a MISSING_ADDRESS_RESPONSE message.
+     *
+     * @param msg Incoming Message
+     * @param ctx Context
+     * @param r   Router
+     * @return MissingAddressResponse payload with the missing addresses set.
+     */
+    @ClientHandler(type = CorfuMsgType.MISSING_ADDRESS_RESPONSE)
+    private static Object handleMissingAddressesResponse(CorfuPayloadMsg<MissingAddressResponse> msg,
+                                                         ChannelHandlerContext ctx, IClientRouter r) {
         return msg.getPayload();
     }
 }

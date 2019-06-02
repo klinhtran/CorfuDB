@@ -2,6 +2,7 @@ package org.corfudb.runtime.clients;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.corfudb.infrastructure.ServerContext.RECORDS_PER_LOG_FILE;
 import static org.corfudb.infrastructure.log.StreamLogFiles.METADATA_SIZE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
@@ -412,7 +413,7 @@ public class LogUnitHandlerTest extends AbstractClientTest {
     public void CorruptedDataReadThrowsException() throws Exception {
         byte[] testString = "hello world".getBytes();
         client.write(0, null, testString, Collections.emptyMap()).get();
-        client.write(StreamLogFiles.RECORDS_PER_LOG_FILE + 1, null,
+        client.write(RECORDS_PER_LOG_FILE + 1, null,
                 testString, Collections.emptyMap()).get();
 
         // Corrupt the written log entry

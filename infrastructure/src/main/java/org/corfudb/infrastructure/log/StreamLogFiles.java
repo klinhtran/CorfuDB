@@ -1,35 +1,20 @@
 package org.corfudb.infrastructure.log;
 
+import static org.corfudb.infrastructure.ServerContext.RECORDS_PER_LOG_FILE;
 import static org.corfudb.infrastructure.utils.Persistence.syncDirectory;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import com.google.protobuf.AbstractMessage;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.corfudb.format.Types;
-import org.corfudb.format.Types.LogEntry;
-import org.corfudb.format.Types.LogHeader;
-import org.corfudb.format.Types.Metadata;
-import org.corfudb.infrastructure.ServerContext;
-import org.corfudb.protocols.logprotocol.CheckpointEntry;
-import org.corfudb.protocols.wireprotocol.IMetadata;
-import org.corfudb.protocols.wireprotocol.LogData;
-import org.corfudb.protocols.wireprotocol.StreamsAddressResponse;
-import org.corfudb.protocols.wireprotocol.TailsResponse;
-import org.corfudb.runtime.exceptions.DataCorruptionException;
-import org.corfudb.runtime.exceptions.OverwriteCause;
-import org.corfudb.runtime.exceptions.OverwriteException;
-import org.corfudb.runtime.exceptions.unrecoverable.UnrecoverableCorfuError;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileNotFoundException;
@@ -56,6 +41,28 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
+import java.util.stream.LongStream;
+
+import javax.annotation.Nullable;
+
+import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.corfudb.format.Types;
+import org.corfudb.format.Types.LogEntry;
+import org.corfudb.format.Types.LogHeader;
+import org.corfudb.format.Types.Metadata;
+import org.corfudb.infrastructure.ServerContext;
+import org.corfudb.protocols.logprotocol.CheckpointEntry;
+import org.corfudb.protocols.wireprotocol.IMetadata;
+import org.corfudb.protocols.wireprotocol.LogData;
+import org.corfudb.protocols.wireprotocol.StreamsAddressResponse;
+import org.corfudb.protocols.wireprotocol.TailsResponse;
+import org.corfudb.runtime.exceptions.DataCorruptionException;
+import org.corfudb.runtime.exceptions.OverwriteCause;
+import org.corfudb.runtime.exceptions.OverwriteException;
+import org.corfudb.runtime.exceptions.unrecoverable.UnrecoverableCorfuError;
 
 
 /**
@@ -76,7 +83,6 @@ public class StreamLogFiles implements StreamLog, StreamLogWithRankedAddressSpac
             .build()
             .getSerializedSize();
     public static final int VERSION = 2;
-    public static final int RECORDS_PER_LOG_FILE = 10000;
     private final Path logDir;
     private final boolean verify;
 
@@ -1010,6 +1016,35 @@ public class StreamLogFiles implements StreamLog, StreamLogWithRankedAddressSpac
         long endSegment = lastAddress / RECORDS_PER_LOG_FILE;
 
         return endSegment - firstSegment <= 1;
+    }
+
+    /**
+     * This method requests for missing addresses in this Log Unit in the specified consecutive
+     * range of addresses. The range cannot be larger than RECORDS_PER_LOG_FILE.
+     *
+     * @param range Range of addresses to compare.
+     * @return Set of missing addresses.
+     */
+    @Override
+    public Set<Long> getMissingAddresses(Range<Long> range) {
+
+        if (range.upperEndpoint() - range.lowerEndpoint() > RECORDS_PER_LOG_FILE) {
+            String msg = String.format("Range too large: [%d-%d]. Number of addresses: %d",
+                    range.lowerEndpoint(), range.upperEndpoint(),
+                    (range.upperEndpoint() - range.lowerEndpoint()));
+            throw new IllegalArgumentException(msg);
+        }
+
+        SegmentHandle firstSh = getSegmentHandleForAddress(range.lowerEndpoint());
+        SegmentHandle lastSh = getSegmentHandleForAddress(range.upperEndpoint());
+
+        Set<Long> knownAddresses = Sets.union(firstSh.getKnownAddresses().keySet(),
+                lastSh.getKnownAddresses().keySet());
+
+        return Sets.difference(
+                LongStream.rangeClosed(range.lowerEndpoint(), range.upperEndpoint()).boxed()
+                        .collect(Collectors.toSet()),
+                knownAddresses);
     }
 
     @Override

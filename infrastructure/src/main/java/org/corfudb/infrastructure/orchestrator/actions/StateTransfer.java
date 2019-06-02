@@ -1,15 +1,16 @@
 package org.corfudb.infrastructure.orchestrator.actions;
 
-import com.google.common.collect.ContiguousSet;
-import com.google.common.collect.DiscreteDomain;
-import com.google.common.collect.Range;
+import static org.corfudb.infrastructure.ServerContext.RECORDS_PER_LOG_FILE;
+
+import com.google.common.collect.Iterables;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
 import org.corfudb.protocols.wireprotocol.ILogData;
@@ -36,74 +37,95 @@ public class StateTransfer {
      * Transfer an address segment from a cluster to a set of specified nodes.
      * There are no cluster reconfigurations, hence no epoch change side effects.
      *
-     * @param layout    layout
-     * @param endpoints destination nodes
-     * @param runtime   The runtime to read the segment from
-     * @param segment   segment to transfer
+     * @param layout   layout
+     * @param endpoint destination node
+     * @param runtime  The runtime to read the segment from
+     * @param segment  segment to transfer
      */
     public static void transfer(Layout layout,
-                                Set<String> endpoints,
+                                @NonNull String endpoint,
                                 CorfuRuntime runtime,
-                                Layout.LayoutSegment segment) throws ExecutionException, InterruptedException {
+                                Layout.LayoutSegment segment)
+            throws ExecutionException, InterruptedException {
 
-        if (endpoints.isEmpty()) {
-            log.debug("stateTransfer: No server needs to transfer for segment [{} - {}], " +
-                    "skipping state transfer for this segment.", segment.getStart(), segment.getEnd());
+        if (endpoint.isEmpty()) {
+            log.debug("stateTransfer: No server needs to transfer for segment [{} - {}], "
+                            + "skipping state transfer for this segment.",
+                    segment.getStart(), segment.getEnd());
             return;
         }
 
-        int batchSize = runtime.getParameters().getBulkReadSize();
+        int chunkSize = runtime.getParameters().getBulkReadSize();
 
         long trimMark = runtime.getAddressSpaceView().getTrimMark().getSequence();
         // Send the trimMark to the new/healing nodes.
         // If this times out or fails, the Action performing the stateTransfer fails and retries.
 
-        endpoints.stream()
-                .map(endpoint -> {
-                    // TrimMark is the first address present on the log unit server.
-                    // Perform the prefix trim on the preceding address = (trimMark - 1).
-                    // Since the LU will reject trim decisions made from older epochs, we
-                    // need to adjust the new trim mark to have the new layout's epoch.
-                    Token prefixToken = new Token(layout.getEpoch(), trimMark - 1);
-                    return runtime.getLayoutView().getRuntimeLayout(layout)
-                            .getLogUnitClient(endpoint)
-                            .prefixTrim(prefixToken);
-                })
-                .forEach(CFUtils::getUninterruptibly);
+        // TrimMark is the first address present on the log unit server.
+        // Perform the prefix trim on the preceding address = (trimMark - 1).
+        // Since the LU will reject trim decisions made from older epochs, we
+        // need to adjust the new trim mark to have the new layout's epoch.
+        Token prefixToken = new Token(layout.getEpoch(), trimMark - 1);
+        CFUtils.getUninterruptibly(runtime.getLayoutView().getRuntimeLayout(layout)
+                .getLogUnitClient(endpoint)
+                .prefixTrim(prefixToken));
 
         if (trimMark > segment.getEnd()) {
-            log.info("stateTransfer: Nothing to transfer, trimMark {} greater than end of segment {}",
+            log.info("stateTransfer: Nothing to transfer, trimMark {}"
+                            + "greater than end of segment {}",
                     trimMark, segment.getEnd());
             return;
         }
 
         // State transfer should start from segment start address or trim mark whichever is lower.
-        long segmentStart = Math.max(trimMark, segment.getStart());
+        final long segmentStart = Math.max(trimMark, segment.getStart());
+        final long segmentEnd = segment.getEnd() - 1;
+        log.info("stateTransfer: Total address range to transfer: [{}-{}] to node {}",
+                segmentStart, segmentEnd, endpoint);
 
-        for (long chunkStart = segmentStart; chunkStart < segment.getEnd()
-                ; chunkStart = chunkStart + batchSize) {
-            long chunkEnd = Math.min((chunkStart + batchSize - 1), segment.getEnd() - 1);
+        // Create batches of RECORDS_PER_LOG_FILE addresses.
+        for (long pendingWritesBatch = segmentStart; pendingWritesBatch <= segmentEnd
+                ; pendingWritesBatch += RECORDS_PER_LOG_FILE) {
 
-            long ts1 = System.currentTimeMillis();
+            long pendingWritesBatchEnd
+                    = Math.min(segmentEnd, pendingWritesBatch + RECORDS_PER_LOG_FILE - 1);
 
-            Map<Long, ILogData> dataMap = runtime.getAddressSpaceView()
-                    .fetchAll(ContiguousSet.create(Range.closed(chunkStart, chunkEnd),
-                            DiscreteDomain.longs()), true);
+            // For each batch request missing addresses in this batch.
+            // This is an optimization in case the state transfer is repeated to
+            // prevent redundant transfer.
+            TreeSet<Long> missingEntries = new TreeSet<>(runtime.getLayoutView()
+                    .getRuntimeLayout(layout)
+                    .getLogUnitClient(endpoint)
+                    .requestMissingAddresses(pendingWritesBatch, pendingWritesBatchEnd).get()
+                    .getMissingAddresses());
+            // Partition the large batch into chunks to read/write within the RPC timeout.
+            Iterable<List<Long>> chunks = Iterables.partition(missingEntries, chunkSize);
 
-            long ts2 = System.currentTimeMillis();
+            log.info("Addresses to be transferred in range [{}-{}] = {}",
+                    pendingWritesBatch, pendingWritesBatchEnd, missingEntries.size());
+            log.error("missingEntries: {}", missingEntries);
 
-            log.info("stateTransfer: read {}-{} in {} ms", chunkStart, chunkEnd, (ts2 - ts1));
+            // Read and write in chunks of chunkSize.
+            for (List<Long> chunk : chunks) {
 
-            List<LogData> entries = new ArrayList<>();
-            for (long x = chunkStart; x <= chunkEnd; x++) {
-                if (!dataMap.containsKey(x)) {
-                    log.error("Missing address {} in range {}-{}", x, chunkStart, chunkEnd);
-                    throw new IllegalStateException("Missing address");
+                long ts1 = System.currentTimeMillis();
+
+                Map<Long, ILogData> dataMap = runtime.getAddressSpaceView().fetchAll(chunk, true);
+
+                long ts2 = System.currentTimeMillis();
+
+                log.info("stateTransfer: read [{}-{}] in {} ms",
+                        chunk.get(0), chunk.get(chunk.size() - 1), (ts2 - ts1));
+
+                List<LogData> entries = new ArrayList<>();
+                for (long address : chunk) {
+                    if (!dataMap.containsKey(address)) {
+                        log.error("Missing address {} in batch {}", address, chunk);
+                        throw new IllegalStateException("Missing address");
+                    }
+                    entries.add((LogData) dataMap.get(address));
                 }
-                entries.add((LogData) dataMap.get(x));
-            }
 
-            for (String endpoint : endpoints) {
                 // Write segment chunk to the new logunit
                 ts1 = System.currentTimeMillis();
                 boolean transferSuccess = runtime.getLayoutView().getRuntimeLayout(layout)
@@ -112,14 +134,15 @@ public class StateTransfer {
                 ts2 = System.currentTimeMillis();
 
                 if (!transferSuccess) {
-                    log.error("stateTransfer: Failed to transfer {}-{} to {}", chunkStart,
-                            chunkEnd, endpoint);
+                    log.error("stateTransfer: Failed to transfer {} to {}",
+                            chunk, endpoint);
                     throw new IllegalStateException("Failed to transfer!");
                 }
 
-                log.info("stateTransfer: Transferred address chunk [{}, {}] to {} in {} ms",
-                        chunkStart, chunkEnd, endpoint, (ts2 - ts1));
+                log.info("stateTransfer: Transferred address chunk [{}-{}] to {} in {} ms",
+                        chunk.get(0), chunk.get(chunk.size() - 1), endpoint, (ts2 - ts1));
             }
+
         }
     }
 }
