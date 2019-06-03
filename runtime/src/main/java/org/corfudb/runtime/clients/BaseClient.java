@@ -10,6 +10,8 @@ import org.corfudb.protocols.wireprotocol.CorfuMsg;
 import org.corfudb.protocols.wireprotocol.CorfuMsgType;
 import org.corfudb.protocols.wireprotocol.CorfuPayloadMsg;
 import org.corfudb.protocols.wireprotocol.VersionInfo;
+import org.corfudb.runtime.exceptions.WrongEpochException;
+import org.corfudb.util.CFUtils;
 
 /**
  * This is a base client which sends basic messages.
@@ -38,13 +40,14 @@ public class BaseClient implements IClient {
 
     /**
      * Ping the endpoint, synchronously.
-     * Note: this ping is epoch aware
      *
-     * @return True, if the endpoint was reachable, false otherwise.
+     * @return True, if the endpoint was reachable (includes wrong epoch), false otherwise.
      */
     public boolean pingSync() {
         try {
-            return ping().get();
+            return CFUtils.getUninterruptibly(ping(), WrongEpochException.class);
+        } catch (WrongEpochException we) {
+            return true;
         } catch (Exception e) {
             log.error("Ping failed due to exception", e);
             return false;
