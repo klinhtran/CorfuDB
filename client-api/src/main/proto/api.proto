@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option java_package = "org.corfudb.runtime";
+
+message Key {
+    bytes key_name = 1;
+}
+
+message Value {
+    bytes data = 1;
+}
+
+message Version {
+    bytes version = 1;
+}
+
+message Record {
+    Key key = 1;
+    Value vale = 2;
+    Version version = 3;
+}

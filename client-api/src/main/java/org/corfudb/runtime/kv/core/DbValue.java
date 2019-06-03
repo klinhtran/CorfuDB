@@ -1,25 +1,34 @@
-package org.corfudb.runtime.kv;
+package org.corfudb.runtime.kv.core;
+
+import lombok.AllArgsConstructor;
+import org.corfudb.runtime.Api;
+
+import java.util.NoSuchElementException;
+import java.util.function.Supplier;
 
 /**
  * Type contract representing a data-containing entity.
  */
 @FunctionalInterface
-public interface Value {
+public interface DbValue<T> extends Supplier<T> {
 
     /**
-     * Implementation of {@link Value} that represents an "empty" value.
+     * Implementation of {@link DbValue} that represents an "empty" value.
      * This class should carry the same connotation as the return value of
      * {@linkplain java.util.Optional#empty() Optional&lt;Value&gt;.empty()}.
      */
-    final class None implements Value {
+    final class NoneValue implements DbValue<Void> {
         /**
-         * Static singleton instance of {@link None}.
+         * Static singleton instance of {@link NoneValue}.
          */
-        private static final None INSTANCE = new None();
+        private static final DbValue<?> INSTANCE = new NoneValue();
 
-        private byte[] data = new byte[0];
+        private NoneValue() {
+        }
 
-        private None() {
+        @Override
+        public Void get() {
+            throw new NoSuchElementException("No value present");
         }
 
         @Override
@@ -28,13 +37,18 @@ public interface Value {
         }
 
         @Override
-        public byte[] asBytes() {
-            return data;
-        }
-
-        @Override
         public String toString() {
             return "Value{None}";
+        }
+    }
+
+    @AllArgsConstructor
+    class MessageValue implements DbValue<Api.Value> {
+        private final Api.Value value;
+
+        @Override
+        public Api.Value get() {
+            return value;
         }
     }
 
@@ -44,7 +58,7 @@ public interface Value {
      */
     enum Type {
         /**
-         * Special type denoting that the associated {@link Value} instance is not a value.
+         * Special type denoting that the associated {@link DbValue} instance is not a value.
          */
         NONE("NONE"),
         /**
@@ -78,23 +92,16 @@ public interface Value {
      * @return the type of data as {@link Type}.
      */
     default Type type() {
-        return Value.Type.BINARY;
+        return DbValue.Type.BINARY;
     }
 
     /**
-     * Data as a native byte array.
+     * Returns a {@link DbValue} instance that does not represent any value.
      *
-     * @return data in byte array.
+     * @return an instance of {@link DbValue}.
      */
-    byte[] asBytes();
-
-    /**
-     * Returns a {@link Value} instance that does not represent any value.
-     *
-     * @return an instance of {@link Value}.
-     */
-    static Value none() {
-        return None.INSTANCE;
+    static <T> DbValue<T> none() {
+        return (DbValue<T>) NoneValue.INSTANCE;
     }
 }
 
