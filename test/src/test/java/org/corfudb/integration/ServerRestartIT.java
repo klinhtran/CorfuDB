@@ -419,6 +419,7 @@ public class ServerRestartIT extends AbstractIT {
 
         assertThat(shutdownCorfuServer(corfuServerProcess)).isTrue();
 
+        
         corfuServerProcess = runCorfuServer();
         corfuRuntime = createDefaultRuntime();
         TokenResponse tokenResponseA = corfuRuntime
